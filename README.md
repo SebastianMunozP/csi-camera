@@ -26,12 +26,13 @@ Currently, the `csi-cam` module supports the Linux platform only.
 
 To use this module, follow these instructions to [add a module from the Viam Registry](https://docs.viam.com/registry/configure/#add-a-modular-resource-from-the-viam-registry) and select the `viam:camera:csi` model from the [`csi-cam` module](https://app.viam.com/module/viam/csi-cam).
 
-### Configure your CSI camera
-
 > [!NOTE]  
 > Before configuring your camera, you must [create a robot](https://docs.viam.com/manage/fleet/robots/#add-a-new-robot).
 
 Navigate to the **Config** tab of your robot’s page in [the Viam app](https://app.viam.com/). Click on the **Components** subtab and click **Create component**. Select the `camera` type, then select the `csi` model. Enter a name for your camera and click **Create**.
+
+
+### Configure your CSI camera
 
 On the new component panel, copy and paste the following attribute template into your camera's **Attributes** box. 
 ```json
