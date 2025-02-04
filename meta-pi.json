@@ -6,7 +6,9 @@
   "models": [
     {
       "api": "rdk:component:camera",
-      "model": "viam:camera:csi-pi"
+      "model": "viam:camera:csi-pi",
+      "markdown_link": "README.md#configure-your-csi-camera",
+      "description" :"A module for the CSI camera"
     }
   ],
   "entrypoint": "./bin/viam-csi-latest-aarch64.AppImage"
