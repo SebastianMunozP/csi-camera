@@ -11,7 +11,7 @@ Easily integrate CSI Cameras into your Viam projects using this camera module.
 
 ### Supported Modules
 - **Nvidia Jetson**: Use the `csi-cam` module. [More Info](./docs/JETSON.md)
-- **Raspberry Pi**: Use the `csi-cam-pi` module. [More Info](./docs/PI.md)
+- **Raspberry Pi**:  Use the `csi-cam-pi` module for Raspberry Pi CSI camera v1.3, v2.0, and v3.0. [More Info](./docs/PI.md)
 ___
 
 ## `csi-cam` model for Jetson boards
