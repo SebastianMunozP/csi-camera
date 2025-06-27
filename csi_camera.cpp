@@ -81,8 +81,25 @@ Camera::raw_image CSICamera::get_image(const std::string mime_type, const Attrib
 }
 
 Camera::image_collection CSICamera::get_images() {
-    std::cerr << "get_images not implemented" << std::endl;
-    return image_collection{};
+    if (debug) {
+        std::cout << "[get_images] start\n";
+    }
+    
+    AttributeMap empty_extra;
+    raw_image image = get_image(DEFAULT_OUTPUT_MIMETYPE, empty_extra);
+    image.source_name = ""; // empty string because we don't have multiple sources to differentiate
+
+    image_collection collection;
+    collection.images = std::vector<raw_image>{std::move(image)};
+    auto now = std::chrono::system_clock::now();
+    auto duration_since_epoch = now.time_since_epoch();
+    auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration_since_epoch);
+    collection.metadata.captured_at = std::chrono::time_point<long long, std::chrono::nanoseconds>(nanoseconds);
+
+    if (debug) {
+        std::cout << "[get_images] end\n";
+    }
+    return collection;
 }
 
 AttributeMap CSICamera::do_command(const AttributeMap command) {
