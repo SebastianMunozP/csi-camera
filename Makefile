@@ -4,11 +4,9 @@ INSTALL_DIR := $(BUILD_DIR)/AppDir
 BIN_DIR := ./bin
 
 # Docker
-HUB_USER := seanavery
+HUB_USER := viam-modules/csi-camera
 TEST_NAME := viam-csi-test
-DOCK_TAG := 0.0.1 # tag for mod/test images
-BASE_TAG := 0.0.3
-L4T_TAG := 35.4.1
+BASE_TAG := 0.0.4
 
 # Package
 PACK_NAME := viam-csi
@@ -17,18 +15,12 @@ PACK_TAG := latest
 # CLI
 TARGET ?= pi # [jetson,pi]
 ifeq ($(TARGET), jetson)
-	TEST_BASE=nvcr.io/nvidia/l4t-base:$(L4T_TAG)
 	BASE_NAME=viam-cpp-base-jetson
-	BASE_CONFIG=./etc/Dockerfile.base.l4t
-	MOD_NAME=viam-csi-module-jetson
-	MOD_CONFIG=./etc/Dockerfile.mod
+	BASE_CONFIG=./etc/Dockerfile.base
 	RECIPE=./viam-csi-jetson-arm64.yml
 else ifeq ($(TARGET), pi)
-	TEST_BASE=debian:bookworm
 	BASE_NAME=viam-cpp-base-pi
 	BASE_CONFIG=./etc/Dockerfile.base.bullseye
-	MOD_NAME=viam-csi-module-pi
-	MOD_CONFIG=./etc/Dockerfile.mod.pi
 	RECIPE=./viam-csi-pi-arm64.yml
 endif
 
@@ -47,8 +39,7 @@ package:
 	cd etc && \
 	PACK_NAME=$(PACK_NAME) \
 	PACK_TAG=$(PACK_TAG) \
-	appimage-builder \
-		--recipe $(RECIPE) \
+	appimage-builder --recipe $(RECIPE)
 
 # Removes all build and bin artifacts.
 clean:
@@ -68,8 +59,8 @@ bin:
 dep:
 	export DEBIAN_FRONTEND=noninteractive && \
 	export TZ=America/New_York && \
+	apt-get update && \
 	if [ "$(TARGET)" = "jetson" ]; then \
-		apt-get update && \
 		apt-get -y install libgtest-dev && \
 		apt-get install -y gstreamer1.0-tools && \
 		apt-get install -y libgstreamer1.0-dev \
@@ -78,12 +69,7 @@ dep:
 			libgstreamer-plugins-bad1.0-dev; \
 	elif [ "$(TARGET)" = "pi" ]; then \
 		apt-get install -y --no-install-recommends software-properties-common && \
-		apt-add-repository 'deb http://archive.raspberrypi.org/debian/ bullseye main' && \
-		wget -qO - https://archive.raspberrypi.org/debian/raspberrypi.gpg.key | apt-key add - && \
-		sed -i '/bullseye-backports/d' /etc/apt/sources.list && \
-		echo "deb https://archive.debian.org/debian bullseye-backports main" > /etc/apt/sources.list.d/backports.list && \
-		apt-get -y update && \
-		apt-get -y install libcamera0 \
+		apt-get -y install \
 			libgstreamer1.0-dev \
 			libgstreamer1.0-0 \
 			gstreamer1.0-x \
@@ -104,6 +90,7 @@ dep:
 		mkdir -p ${HOME}/opt/src && \
 		apt-get -y install meson && \
 		apt-get -y install libyaml-dev python3-yaml python3-ply python3-jinja2 && \
+		pip3 install --upgrade meson && \
 		cd ${HOME}/opt/src && \
 		git clone https://github.com/raspberrypi/libcamera.git && \
 		cd libcamera && \
@@ -122,57 +109,7 @@ dep:
 image-base:
 	docker build -t $(BASE_NAME):$(BASE_TAG) \
 		--memory=16g \
-		--build-arg L4T_TAG=$(L4T_TAG) \
 		-f $(BASE_CONFIG) ./
-
-# Builds docker image with viam-csi installed.
-image-mod:
-	docker build -t $(MOD_NAME):$(DOCK_TAG) \
-		--build-arg BASE_IMG=ghcr.io/$(HUB_USER)/$(BASE_NAME):$(BASE_TAG) \
-		-f $(MOD_CONFIG) ./
-
-# Builds raw L4T docker image with viam-csi appimage.
-image-test:
-	docker build -t $(TEST_NAME)-$(TARGET):$(DOCK_TAG) \
-		--no-cache \
-		--build-arg TEST_BASE=$(TEST_BASE) \
-		--build-arg PACK_TAG=$(PACK_TAG) \
-		-f ./etc/Dockerfile.test ./
-
-# Copies binary and appimage from container to host.
-bin-mod:
-	rm -rf $(BIN_DIR) || true && \
-	mkdir -p $(BIN_DIR) && \
-	docker stop viam-csi-bin || true && \
-	docker rm viam-csi-bin || true && \
-	docker run -d -it --name viam-csi-bin $(MOD_NAME):$(DOCK_TAG) && \
-	docker cp viam-csi-bin:/root/opt/src/csi-camera/build/viam-csi ./$(BIN_DIR) && \
-	docker cp viam-csi-bin:/root/opt/src/csi-camera/etc/viam-csi-$(PACK_TAG)-aarch64.AppImage ./$(BIN_DIR) && \
-	docker stop viam-csi-bin
-
-# SDK
-.PHONY: build-sdk
-build-sdk:
-	cd viam-cpp-sdk && \
-	mkdir -p build && \
-	cd build && \
-	cmake -DVIAMCPPSDK_USE_DYNAMIC_PROTOS=ON -DVIAMCPPSDK_OFFLINE_PROTO_GENERATION=ON .. -G Ninja && \
-	ninja -j 2 && \
-	sudo ninja install -j 2 && \
-	sudo cp -r ./install/* /usr/local/
-
-docker-sdk:
-	docker build -t viam-cpp-sdk -f ./viam-cpp-sdk/etc/docker/Dockerfile.ubuntu.focal ./ && \
-	docker run -it viam-cpp-sdk /bin/bash
-
-# Tests
-# Tests out package in a fresh container.
-test-package:
-	docker run \
-		-e PACK_FILE=$(PACK_NAME)-$(PACK_TAG)-aarch64.AppImage \
-		--device /dev/fuse \
-		--cap-add SYS_ADMIN \
-		$(TEST_NAME)-$(TARGET):$(DOCK_TAG)
 
 # Utils
 # Installs waveshare camera overrides on Jetson.

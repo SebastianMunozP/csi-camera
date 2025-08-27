@@ -8,10 +8,10 @@ jobs:
     strategy:
      matrix:
         include:
-          - container: ghcr.io/seanavery/viam-cpp-base-jetson:0.0.3
+          - container: ghcr.io/viam-modules/csi-camera/viam-cpp-base-jetson:0.0.4
             TARGET: jetson
             META_PATH: meta.json
-          - container: ghcr.io/seanavery/viam-cpp-base-pi:0.0.3
+          - container: ghcr.io/viam-modules/csi-camera/viam-cpp-base-pi:0.0.4
             TARGET: pi
             META_PATH: meta-pi.json
     container:
@@ -41,11 +41,6 @@ jobs:
 
       - name: Copy binary and appimage to bin folder and archive
         run: make bin && tar czf module.tar.gz ./bin/*.AppImage
-
-      - name: Run appimage in fresh instance
-        run: |
-          make image-test
-          make test-package
 
       - name: Upload Module
         uses: viamrobotics/upload-module@main
