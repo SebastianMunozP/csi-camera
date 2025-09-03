@@ -1,43 +1,44 @@
 #pragma once
 
-#include <vector>
-#include <string>
-#include <memory>
 #include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include <gst/gst.h>
 #include <gst/app/gstappsink.h>
+#include <gst/gst.h>
 
+#include <viam/sdk/common/exception.hpp>
+#include <viam/sdk/common/proto_value.hpp>
 #include <viam/sdk/components/camera.hpp>
 #include <viam/sdk/config/resource.hpp>
+#include <viam/sdk/log/logging.hpp>
 #include <viam/sdk/resource/reconfigurable.hpp>
-#include <viam/sdk/common/proto_value.hpp>
 
 #include "utils.h"
 
 using namespace viam::sdk;
 
 class CSICamera : public Camera, public Reconfigurable {
-private:
+   private:
     // Device
     device_type device;
 
     // Camera
-    bool debug;
     int width_px = 0;
     int height_px = 0;
     int frame_rate = 0;
     std::string video_path;
 
     // GST
-    GstElement *pipeline = nullptr;
-    GstBus *bus = nullptr;
-    GstMessage *msg = nullptr;
-    GstSample *sample = nullptr;
-    GstBuffer *buffer = nullptr;
+    GstElement* pipeline = nullptr;
+    GstBus* bus = nullptr;
+    GstMessage* msg = nullptr;
+    GstSample* sample = nullptr;
+    GstBuffer* buffer = nullptr;
     GstElement* appsink = nullptr;
 
-public:
+   public:
     // Module
     explicit CSICamera(const std::string name, const ProtoStruct& attrs);
     ~CSICamera();
@@ -57,21 +58,20 @@ public:
     std::vector<GeometryConfig> get_geometries(const ProtoStruct& extra) override;
     properties get_properties() override;
 
-    // GST 
+    // GST
     // helpers to manage GStreamer pipeline lifecycle
     std::string create_pipeline() const;
     void wait_pipeline();
     void stop_pipeline();
     void catch_pipeline();
 
-    // Image 
+    // Image
     // helpers to pull and process images from appsink
     std::vector<unsigned char> get_csi_image();
-    std::vector<unsigned char> buff_to_vec(GstBuffer *buff);
+    std::vector<unsigned char> buff_to_vec(GstBuffer* buff);
 
     // Getters
     std::string get_name() const;
-    bool is_debug() const;
     int get_width_px() const;
     int get_height_px() const;
     int get_frame_rate() const;

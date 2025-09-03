@@ -1,8 +1,8 @@
-#include <iostream>
-#include <fstream>
-#include <cstring>
-#include <sstream>
 #include <chrono>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 #include <thread>
 
 #include "constraints.h"
@@ -12,22 +12,20 @@ using namespace viam::sdk;
 
 CSICamera::CSICamera(const std::string name, const ProtoStruct& attrs) : Camera(std::move(name)) {
     device = get_device_type();
-    std::cout << "Creating CSICamera with name: " << name << std::endl;
-    std::cout << "Device type: " << device.name << std::endl;
+    VIAM_SDK_LOG(debug) << "Creating CSICamera with name: " << name;
+    VIAM_SDK_LOG(debug) << "Device type: " << device.name;
     init(attrs);
 }
 
 CSICamera::~CSICamera() {
-    std::cout << "Destroying CSICamera" << std::endl;
+    VIAM_SDK_LOG(debug) << "Destroying CSICamera";
     stop_pipeline();
 }
 
 void CSICamera::init(const ProtoStruct& attrs) {
     validate_attrs(attrs);
     auto pipeline_args = create_pipeline();
-    if (debug) {
-        std::cout << "pipeline_args: " << pipeline_args << std::endl;
-    }
+    VIAM_SDK_LOG(debug) << "pipeline_args: " << pipeline_args;
     init_csi(pipeline_args);
 }
 
@@ -36,7 +34,6 @@ void CSICamera::validate_attrs(const ProtoStruct& attrs) {
     set_attr<int>(attrs, "height_px", &CSICamera::height_px, DEFAULT_INPUT_HEIGHT);
     set_attr<int>(attrs, "frame_rate", &CSICamera::frame_rate, DEFAULT_INPUT_FRAMERATE);
     set_attr<std::string>(attrs, "video_path", &CSICamera::video_path, DEFAULT_INPUT_SENSOR);
-    set_attr<bool>(attrs, "debug", &CSICamera::debug, false);
 }
 
 template <typename T>
@@ -51,41 +48,33 @@ void CSICamera::set_attr(const ProtoStruct& attrs, const std::string& name, T CS
             this->*member = val.get_unchecked<bool>();
         }
     } else {
-        this->*member = de; // Set the default value if the attribute is not found
+        this->*member = de;  // Set the default value if the attribute is not found
     }
 }
 
 void CSICamera::reconfigure(const Dependencies& deps, const ResourceConfig& cfg) {
-    if (debug) {
-        std::cout << "Reconfiguring CSI Camera module" << std::endl;
-    }
+    VIAM_SDK_LOG(debug) << "Reconfiguring CSI Camera module";
     stop_pipeline();
     auto attrs = cfg.attributes();
     init(attrs);
 }
 
 Camera::raw_image CSICamera::get_image(const std::string mime_type, const ProtoStruct& extra) {
-    if (debug) {
-        std::cout << "hit get_image. expecting mime_type " << mime_type << std::endl;
-    }
     raw_image image;
     image.mime_type = DEFAULT_OUTPUT_MIMETYPE;
     image.bytes = get_csi_image();
     if (image.bytes.empty()) {
-        std::cerr << "ERROR: no bytes retrieved" << std::endl;
+        throw Exception("no bytes retrieved from get_csi_image");
     }
 
     return image;
 }
 
 Camera::image_collection CSICamera::get_images() {
-    if (debug) {
-        std::cout << "[get_images] start\n";
-    }
-    
     ProtoStruct empty_extra;
+    // If image is not available, an exception will be thrown
     raw_image image = get_image(DEFAULT_OUTPUT_MIMETYPE, empty_extra);
-    image.source_name = ""; // empty string because we don't have multiple sources to differentiate
+    image.source_name = "";  // empty string because we don't have multiple sources to differentiate
 
     image_collection collection;
     collection.images = std::vector<raw_image>{std::move(image)};
@@ -94,65 +83,55 @@ Camera::image_collection CSICamera::get_images() {
     auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration_since_epoch);
     collection.metadata.captured_at = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>(nanoseconds);
 
-    if (debug) {
-        std::cout << "[get_images] end\n";
-    }
     return collection;
 }
 
 ProtoStruct CSICamera::do_command(const ProtoStruct& command) {
-    std::cerr << "do_command not implemented" << std::endl;
+    VIAM_SDK_LOG(warn) << "do_command not implemented";
     return ProtoStruct{};
 }
 
 Camera::point_cloud CSICamera::get_point_cloud(const std::string mime_type, const ProtoStruct& extra) {
-    std::cerr << "get_point_cloud not implemented" << std::endl;
+    VIAM_SDK_LOG(warn) << "get_point_cloud not implemented";
     return point_cloud{};
 }
 
 std::vector<GeometryConfig> CSICamera::get_geometries(const ProtoStruct& extra) {
-    std::cerr << "get_geometries not implemented" << std::endl;
+    VIAM_SDK_LOG(error) << "get_geometries not implemented";
     return std::vector<GeometryConfig>{};
 }
 
 Camera::properties CSICamera::get_properties() {
-    std::cerr << "get_properties not implemented" << std::endl;
-    return properties{};
+    Camera::properties p{};
+    p.supports_pcd = false;
+    p.intrinsic_parameters.width_px = width_px;
+    p.intrinsic_parameters.height_px = height_px;
+    return p;
 }
 
 void CSICamera::init_csi(const std::string pipeline_args) {
     // Build gst pipeline
-    GError *error = nullptr;
-    pipeline = gst_parse_launch(
-        pipeline_args.c_str(),
-        &error
-    );
+    GError* error = nullptr;
+    pipeline = gst_parse_launch(pipeline_args.c_str(), &error);
     if (!pipeline) {
         std::cerr << "Failed to create the pipeline" << std::endl;
         g_print("Error: %s\n", error->message);
         g_error_free(error);
-        std::exit(EXIT_FAILURE);
+        throw Exception("Failed to create the pipeline");
     }
 
-    // Print pipeline structure
-    if (debug) {
-        GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline_structure");
-    }
-    
     // Fetch the appsink element
     appsink = gst_bin_get_by_name(GST_BIN(pipeline), "appsink0");
     if (!appsink) {
-        std::cerr << "Failed to get the appsink element" << std::endl;
         gst_object_unref(pipeline);
-        std::exit(EXIT_FAILURE);
+        throw Exception("Failed to get the appsink element");
     }
 
     // Start the pipeline
     if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-        std::cerr << "Failed to start the pipeline" << std::endl;
         gst_object_unref(appsink);
         gst_object_unref(pipeline);
-        std::exit(EXIT_FAILURE);
+        throw Exception("Failed to start the pipeline");
     }
 
     // Handle async pipeline creation
@@ -161,10 +140,9 @@ void CSICamera::init_csi(const std::string pipeline_args) {
     // Run the main loop
     bus = gst_element_get_bus(pipeline);
     if (!bus) {
-        std::cerr << "Failed to get the bus for the pipeline" << std::endl;
         gst_object_unref(appsink);
         gst_object_unref(pipeline);
-        std::exit(EXIT_FAILURE);
+        throw Exception("Failed to get the bus for the pipeline");
     }
 }
 
@@ -174,7 +152,7 @@ void CSICamera::wait_pipeline() {
     GstStateChangeReturn ret;
 
     // Set timeout for state change
-    const int timeout_microseconds = GST_CHANGE_STATE_TIMEOUT * 1000000; // Convert seconds to microseconds
+    const int timeout_microseconds = GST_CHANGE_STATE_TIMEOUT * 1000000;  // Convert seconds to microseconds
     auto start_time = std::chrono::high_resolution_clock::now();
 
     // Wait for state change to complete
@@ -183,8 +161,7 @@ void CSICamera::wait_pipeline() {
         auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(current_time - start_time).count();
 
         if (elapsed_time >= timeout_microseconds) {
-            std::cerr << "Timeout: GST pipeline state change did not complete within timeout limit" << std::endl;
-            std::exit(EXIT_FAILURE);
+            throw Exception("Timeout: GST pipeline state change did not complete within timeout limit");
         }
 
         // Wait for a short duration to avoid busy waiting
@@ -195,41 +172,45 @@ void CSICamera::wait_pipeline() {
         std::cout << "GST pipeline state change success" << std::endl;
     } else if (ret == GST_STATE_CHANGE_FAILURE) {
         std::cerr << "GST pipeline failed to change state" << std::endl;
-        std::exit(EXIT_FAILURE);
-    } else if (ret = GST_STATE_CHANGE_NO_PREROLL) {
+        throw Exception("GST pipeline failed to change state");
+    } else if (ret == GST_STATE_CHANGE_NO_PREROLL) {
         std::cout << "GST pipeline changed but not enough data for preroll" << std::endl;
     } else {
         std::cerr << "GST pipeline failed to change state" << std::endl;
-        std::exit(EXIT_FAILURE);
+        throw Exception("GST pipeline failed to change state");
     }
 }
 
 void CSICamera::stop_pipeline() {
-    if (debug) {
-        std::cout << "Stopping GST pipeline" << std::endl;
-    }
+    VIAM_SDK_LOG(debug) << "Stopping GST pipeline";
 
     // Check if pipeline is defined
     if (pipeline == nullptr) {
-        std::cout << "Pipeline is not defined" << std::endl;
+        VIAM_SDK_LOG(error) << "Pipeline is not defined";
         return;
     }
 
     // Stop the pipeline
     if (gst_element_set_state(pipeline, GST_STATE_NULL) == GST_STATE_CHANGE_FAILURE) {
-        std::cerr << "Failed to stop the pipeline" << std::endl;
-        gst_object_unref(appsink);
-        gst_object_unref(pipeline);
-        std::exit(EXIT_FAILURE);
+        // Don't throw, continue cleanup
+        VIAM_SDK_LOG(error) << "Failed to stop the pipeline";
     }
 
     // Wait for async state change
-    wait_pipeline();
+    try {
+        wait_pipeline();
+    } catch (const std::exception& e) {
+        // Don't throw, continue cleanup
+        VIAM_SDK_LOG(error) << "Exception during wait_pipeline: " << e.what();
+    }
 
     // Free resources
-    gst_object_unref(appsink);
-    gst_object_unref(pipeline);
-    gst_object_unref(bus);
+    if (appsink)
+        gst_object_unref(appsink);
+    if (pipeline)
+        gst_object_unref(pipeline);
+    if (bus)
+        gst_object_unref(bus);
     appsink = nullptr;
     pipeline = nullptr;
     bus = nullptr;
@@ -242,29 +223,24 @@ void CSICamera::catch_pipeline() {
     switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_ERROR:
             gst_message_parse_error(msg, &error, &debugInfo);
-            std::cerr << "Error: " << error->message << std::endl;
-            std::cerr << "Debug Info: " << debugInfo << std::endl;
+            VIAM_SDK_LOG(debug) << "Debug Info: " << debugInfo;
             stop_pipeline();
-            std::exit(EXIT_FAILURE);
+            throw Exception("GST pipeline error: " + std::string(error->message));
             break;
         case GST_MESSAGE_EOS:
-            std::cout << "End of stream received" << std::endl;
+            VIAM_SDK_LOG(debug) << "End of stream received, stopping pipeline";
             stop_pipeline();
-            std::exit(EXIT_SUCCESS);
+            throw Exception("End of stream received, pipeline stopped");
             break;
         case GST_MESSAGE_WARNING:
             gst_message_parse_warning(msg, &error, &debugInfo);
-            if (debug) {
-                std::cout << "Warning: " << error->message << std::endl;
-                std::cout << "Debug Info: " << debugInfo << std::endl;
-            }
+            VIAM_SDK_LOG(warn) << "Warning: " << error->message;
+            VIAM_SDK_LOG(warn) << "Debug Info: " << debugInfo;
             break;
         case GST_MESSAGE_INFO:
             gst_message_parse_info(msg, &error, &debugInfo);
-            if (debug) {
-                std::cout << "Info: " << error->message << std::endl;
-                std::cout << "Debug Info: " << debugInfo << std::endl;
-            }
+            VIAM_SDK_LOG(info) << "Info: " << error->message;
+            VIAM_SDK_LOG(info) << "Debug Info: " << debugInfo;
             break;
         default:
             // Ignore other message types
@@ -306,24 +282,19 @@ std::vector<unsigned char> CSICamera::get_csi_image() {
 
 std::string CSICamera::create_pipeline() const {
     auto device_params = get_device_params(device);
-    std::string input_sensor = (device.value == device_type::jetson) ? (" sensor-id="+video_path) : "";
+    std::string input_sensor = (device.value == device_type::jetson) ? (" sensor-id=" + video_path) : "";
 
     std::ostringstream oss;
-    oss << device_params.input_source
-        << input_sensor
-        << " ! " << device_params.input_format
-        << ",width=" << std::to_string(width_px)
-        << ",height=" << std::to_string(height_px)
-        << ",framerate=" << std::to_string(frame_rate)
-        << "/1 ! " << device_params.video_converter
-        << " ! " << device_params.output_encoder
-        << " ! " << "image/jpeg"
+    oss << device_params.input_source << input_sensor << " ! " << device_params.input_format << ",width=" << std::to_string(width_px)
+        << ",height=" << std::to_string(height_px) << ",framerate=" << std::to_string(frame_rate) << "/1 ! "
+        << device_params.video_converter << " ! " << device_params.output_encoder << " ! "
+        << "image/jpeg"
         << " ! appsink name=appsink0 sync=false max-buffers=1 drop=true";
 
     return oss.str();
 }
 
-std::vector<unsigned char> CSICamera::buff_to_vec(GstBuffer *buff) {
+std::vector<unsigned char> CSICamera::buff_to_vec(GstBuffer* buff) {
     // Get the size of the buffer
     size_t bufferSize = gst_buffer_get_size(buff);
 
@@ -353,10 +324,6 @@ int CSICamera::get_height_px() const {
 
 int CSICamera::get_frame_rate() const {
     return frame_rate;
-}
-
-bool CSICamera::is_debug() const {
-    return debug;
 }
 
 GstElement* CSICamera::get_appsink() const {
