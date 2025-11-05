@@ -1,0 +1,50 @@
+name: Unit Tests
+
+on:
+  push:
+    branches:
+      - '*'
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+  pull_request:
+    branches:
+      - '*'
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+
+jobs:
+  unit-test:
+    name: Unit Tests
+    runs-on: buildjet-2vcpu-ubuntu-2204-arm
+    strategy:
+      matrix:
+        include:
+          - container: ghcr.io/viam-modules/csi-camera/viam-cpp-base-jetson:0.0.6
+            TARGET: jetson
+
+    container:
+      image: ${{ matrix.container }}
+      options: --platform linux/arm64
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set environment variables
+        run: |
+          echo "TARGET=${{ matrix.TARGET }}" >> $GITHUB_ENV
+          echo "META_PATH=${{ matrix.META_PATH }}" >> $GITHUB_ENV
+
+      - name: Install module dependencies
+        run: make dep
+
+      - name: Build viam-csi binary
+        run: make build
+
+      - name: Run unit tests
+        run: |
+          export VIAM_CSI_DEVICE=${{ matrix.TARGET }}
+          export VIAM_CSI_TEST_MODE=1
+          ctest --test-dir build --rerun-failed --output-on-failure -VV

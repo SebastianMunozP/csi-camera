@@ -1,16 +1,28 @@
 #include <gtest/gtest.h>
+#include <cstdlib>
+#include <viam/sdk/common/instance.hpp>
 #include <viam/sdk/common/proto_convert.hpp>
 #include <viam/sdk/components/camera.hpp>
 
-#include "../constraints.h"
-#include "../csi_camera.cpp"
-#include "../utils.cpp"
+#include "../../constraints.h"
+#include "../../csi_camera.cpp"
+#include "../../utils.cpp"
 
 using namespace viam::sdk;
 
+// One-time runtime bootstrap to initialize Viam SDK Instance and GStreamer
+static void ensure_runtime() {
+    static bool inited = false;
+    if (inited)
+        return;
+    static Instance inst;
+    gst_init(nullptr, nullptr);
+    inited = true;
+}
+
 // Test that the camera can be created with default values
 TEST(CSICamera, CreateDefault) {
-    gst_init(nullptr, nullptr);
+    ensure_runtime();
 
     ProtoStruct attrs = std::unordered_map<std::string, ProtoValue>();
 
@@ -26,7 +38,7 @@ TEST(CSICamera, CreateDefault) {
 
 // Test that the camera can be created with custom values
 TEST(CSICamera, CreateCustom) {
-    gst_init(nullptr, nullptr);
+    ensure_runtime();
 
     ProtoStruct attrs = std::unordered_map<std::string, ProtoValue>();
     attrs.insert(std::make_pair("width_px", ProtoValue(640)));
@@ -59,8 +71,6 @@ TEST(CSICamera, StartStopPipeline) {
 
     camera.stop_pipeline();
 
-    pipeline = camera.get_pipeline();
-    appsink = camera.get_appsink();
-    EXPECT_EQ(GST_STATE(pipeline), GST_STATE_NULL);
-    EXPECT_EQ(GST_STATE(appsink), GST_STATE_NULL);
+    EXPECT_EQ(camera.get_pipeline(), nullptr);
+    EXPECT_EQ(camera.get_appsink(), nullptr);
 }
